@@ -46,6 +46,7 @@ import WebSocketClient from 'client/web_websocket_client';
 import {getHistory} from 'utils/browser_history';
 import {ActionTypes, PostTypes, RHSStates, ModalIdentifiers, PreviousViewedTypes} from 'utils/constants';
 import DesktopApp from 'utils/desktop_api';
+import {runWhenIdle} from 'utils/run_when_idle';
 import {filterAndSortTeamsByDisplayName} from 'utils/team_utils';
 import * as Utils from 'utils/utils';
 
@@ -67,8 +68,6 @@ export function emitChannelClickEvent(channel: Channel) {
         const member = getMyChannelMember(state, chan.id);
         const currentChannelId = getCurrentChannelId(state);
         const previousRhsState = getPreviousRhsState(state);
-
-        dispatch(getChannelStats(chan.id));
 
         const penultimate = LocalStorageStore.getPreviousChannelName(userId, teamId);
         const penultimateType = LocalStorageStore.getPreviousViewedType(userId, teamId);
@@ -92,10 +91,6 @@ export function emitChannelClickEvent(channel: Channel) {
             dispatch(updateRhsState(RHSStates.CHANNEL_FILES, chan.id, previousRhsState));
         }
 
-        if (currentChannelId) {
-            loadProfilesForSidebar();
-        }
-
         dispatch(batchActions([
             {
                 type: ChannelTypes.SELECT_CHANNEL,
@@ -110,9 +105,25 @@ export function emitChannelClickEvent(channel: Channel) {
             setLastUnreadChannel(state, chan),
         ]));
 
-        if (appsEnabled(state)) {
-            dispatch(fetchAppBindings(chan.id));
-        }
+        // None of these are needed to show the channel, so they wait until it has been rendered rather than
+        // competing with that for the main thread.
+        runWhenIdle(() => {
+            if (currentChannelId) {
+                loadProfilesForSidebar();
+            }
+
+            const latestState = getState();
+            if (getCurrentChannelId(latestState) !== chan.id) {
+                // The user has already moved on, and switching to that channel requested its own data
+                return;
+            }
+
+            dispatch(getChannelStats(chan.id));
+
+            if (appsEnabled(latestState)) {
+                dispatch(fetchAppBindings(chan.id));
+            }
+        });
     }
 
     switchToChannel(channel);
