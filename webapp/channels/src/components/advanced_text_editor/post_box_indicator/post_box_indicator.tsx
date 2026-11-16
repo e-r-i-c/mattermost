@@ -1,7 +1,7 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-import React from 'react';
+import React, {memo} from 'react';
 
 import RemoteUserHour from 'components/advanced_text_editor/remote_user_hour';
 import ScheduledPostIndicator from 'components/advanced_text_editor/scheduled_post_indicator/scheduled_post_indicator';
@@ -18,7 +18,7 @@ type Props = {
     hideRemoteUserHour?: boolean;
 };
 
-export default function PostBoxIndicator({channelId, teammateDisplayName, location, postId, hideRemoteUserHour = false}: Props) {
+function PostBoxIndicator({channelId, teammateDisplayName, location, postId, hideRemoteUserHour = false}: Props) {
     const {
         showRemoteUserHour: showRemoteUserHourFromHook,
         isScheduledPostEnabled,
@@ -52,3 +52,5 @@ export default function PostBoxIndicator({channelId, teammateDisplayName, locati
         </div>
     );
 }
+
+export default memo(PostBoxIndicator);

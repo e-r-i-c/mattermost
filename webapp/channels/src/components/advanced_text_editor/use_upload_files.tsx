@@ -21,6 +21,8 @@ import type {FilePreviewInfo} from 'components/file_preview/file_preview';
 import FileUpload from 'components/file_upload';
 import type {FileUpload as FileUploadClass, TextEditorLocationType} from 'components/file_upload/file_upload';
 
+import {useLatest} from 'hooks/useLatest';
+
 import type {GlobalState} from 'types/store';
 import type {PostDraft} from 'types/store/draft';
 
@@ -56,6 +58,9 @@ const useUploadFiles = (
     const [uploadsProgressPercent, setUploadsProgressPercent] = useState<{[clientID: string]: FilePreviewInfo}>({});
 
     const fileUploadRef = useRef<FileUploadClass>(null);
+
+    // The handlers read the draft from this ref so that the upload button isn't re-rendered on every keystroke
+    const latestDraft = useLatest(draft);
 
     const removeTooltip = useMemo(() => {
         return editAttachmentsDisabled ? intl.formatMessage({
@@ -101,6 +106,7 @@ const useUploadFiles = (
     }, [locale, handleDraftChange, storedDrafts]);
 
     const handleUploadStart = useCallback((clientIds: string[]) => {
+        const draft = latestDraft.current;
         const uploadsInProgress = [...draft.uploadsInProgress, ...clientIds];
 
         const updatedDraft = {
@@ -111,7 +117,7 @@ const useUploadFiles = (
         handleDraftChange(updatedDraft, {instant: true});
 
         focusTextbox();
-    }, [draft, handleDraftChange, focusTextbox]);
+    }, [latestDraft, handleDraftChange, focusTextbox]);
 
     const handleUploadError = useCallback((uploadError: string | ServerError | null, clientId?: string, channelId = '', rootId = '') => {
         if (clientId) {
@@ -138,6 +144,8 @@ const useUploadFiles = (
     }, [handleDraftChange, setServerError, storedDrafts]);
 
     const removePreview = useCallback((clientId: string) => {
+        const draft = latestDraft.current;
+
         handleUploadError(null, clientId, draft.channelId, draft.rootId);
 
         const modifiedDraft = {...draft};
@@ -161,7 +169,7 @@ const useUploadFiles = (
 
         handleDraftChange(modifiedDraft, {instant: true});
         handleFileUploadChange();
-    }, [draft, fileUploadRef, handleDraftChange, handleUploadError, handleFileUploadChange]);
+    }, [latestDraft, fileUploadRef, handleDraftChange, handleUploadError, handleFileUploadChange]);
 
     let attachmentPreview = null;
     if (!isDisabled && (draft.fileInfos.length > 0 || draft.uploadsInProgress.length > 0)) {

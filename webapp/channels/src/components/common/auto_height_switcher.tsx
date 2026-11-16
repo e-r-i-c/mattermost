@@ -1,7 +1,7 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-import React, {useEffect, useState, useRef} from 'react';
+import React, {memo, useEffect, useState, useRef} from 'react';
 import type {CSSProperties} from 'react';
 import {Transition} from 'react-transition-group';
 import scrollIntoView from 'smooth-scroll-into-view-if-needed';
@@ -127,4 +127,4 @@ const AutoHeightSwitcher = ({showSlot, onTransitionEnd, slot1 = null, slot2 = nu
     );
 };
 
-export default AutoHeightSwitcher;
+export default memo(AutoHeightSwitcher);
