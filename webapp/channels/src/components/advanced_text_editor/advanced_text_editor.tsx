@@ -163,16 +163,12 @@ const AdvancedTextEditor = ({
 
     const isRHS = isThreadView ? false : Boolean(rootId) || location === Locations.RHS_COMMENT;
 
-    const getFormattingBarPreferenceName = () => {
-        let name: string;
-        if (isRHS) {
-            name = isInEditMode ? AdvancedTextEditorConst.EDIT : AdvancedTextEditorConst.COMMENT;
-        } else {
-            name = AdvancedTextEditorConst.POST;
-        }
-
-        return name;
-    };
+    let formattingBarPreferenceName: string;
+    if (isRHS) {
+        formattingBarPreferenceName = isInEditMode ? AdvancedTextEditorConst.EDIT : AdvancedTextEditorConst.COMMENT;
+    } else {
+        formattingBarPreferenceName = AdvancedTextEditorConst.POST;
+    }
 
     const currentUserId = useSelector(getCurrentUserId);
     const channel = useSelector((state: GlobalState) => getChannelSelector(state, channelId));
@@ -184,10 +180,7 @@ const AdvancedTextEditor = ({
     const maxPostSize = useSelector((state: GlobalState) => parseInt(getConfig(state).MaxPostSize || '', 10) || Constants.DEFAULT_CHARACTER_LIMIT);
     const canUploadFiles = useSelector((state: GlobalState) => canUploadFilesAccordingToConfig(getConfig(state)));
     const fullWidthTextBox = useSelector((state: GlobalState) => get(state, Preferences.CATEGORY_DISPLAY_SETTINGS, Preferences.CHANNEL_DISPLAY_MODE, Preferences.CHANNEL_DISPLAY_MODE_DEFAULT) === Preferences.CHANNEL_DISPLAY_MODE_FULL_SCREEN);
-    const isFormattingBarHidden = useSelector((state: GlobalState) => {
-        const preferenceName = getFormattingBarPreferenceName();
-        return getBool(state, Preferences.ADVANCED_TEXT_EDITOR, preferenceName);
-    });
+    const isFormattingBarHidden = useSelector((state: GlobalState) => getBool(state, Preferences.ADVANCED_TEXT_EDITOR, formattingBarPreferenceName));
     const teammateId = useSelector((state: GlobalState) => getDirectChannel(state, channelId)?.teammate_id || '');
     const teammateDisplayName = useSelector((state: GlobalState) => (teammateId ? getDisplayName(state, teammateId) : ''));
     const showDndWarning = useSelector((state: GlobalState) => (teammateId ? getStatusForUserId(state, teammateId) === UserStatuses.DND : false));
@@ -250,6 +243,10 @@ const AdvancedTextEditor = ({
     const messageStatusRef = useRef<HTMLDivElement | null>(null);
 
     const [draft, setDraft] = useState(draftFromStore);
+
+    // The handlers below read the draft from this ref instead of depending on it. That keeps them from changing on
+    // every keystroke, which would re-render every memoized part of the editor that receives one of them.
+    const latestDraft = useLatest(draft);
     const [serverError, setServerError] = useState<(ServerError & {submittedMessage?: string}) | null>(null);
     const [postError, setPostError] = useState<React.ReactNode>(null);
     const [showPreview, setShowPreview] = useState(false);
@@ -399,11 +396,10 @@ const AdvancedTextEditor = ({
             category: Preferences.ADVANCED_TEXT_EDITOR,
             user_id: currentUserId,
 
-            // name: isRHS ? AdvancedTextEditorConst.COMMENT : AdvancedTextEditorConst.POST,
-            name: getFormattingBarPreferenceName(),
+            name: formattingBarPreferenceName,
             value: String(!isFormattingBarHidden),
         }]));
-    }, [dispatch, currentUserId, getFormattingBarPreferenceName, isFormattingBarHidden]);
+    }, [dispatch, currentUserId, formattingBarPreferenceName, isFormattingBarHidden]);
 
     const pluginItems = usePluginItems(draft, textboxRef, handleDraftChange);
     const focusTextbox = useTextboxFocus(textboxRef, channelId, isRHS, canPost, wysiwygRef);
@@ -433,6 +429,8 @@ const AdvancedTextEditor = ({
     const insertWysiwygText = useCallback((text: string) => {
         wysiwygRef.current?.insertText(text);
     }, []);
+
+    const getWysiwygEditor = useCallback(() => wysiwygRef.current?.getEditor() ?? null, []);
 
     const {
         emojiPicker,
@@ -504,21 +502,22 @@ const AdvancedTextEditor = ({
     const handleRemoveAllLabels = useCallback(() => {
         // Remove priority from metadata and burn-on-read type
         // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-unused-vars
-        const {priority: _priority, ...restMetadata} = draft.metadata || {};
+        const {priority: _priority, ...restMetadata} = latestDraft.current.metadata || {};
 
         const updatedDraft = {
-            ...draft,
+            ...latestDraft.current,
             type: undefined, // Remove burn-on-read type
             metadata: restMetadata, // Remove priority from metadata
         };
 
         handleDraftChange(updatedDraft, {instant: true});
         focusTextbox();
-    }, [draft, handleDraftChange, focusTextbox]);
+    }, [latestDraft, handleDraftChange, focusTextbox]);
 
     const isDraftSendable = isValidPersistentNotifications && burnOnReadSendable;
 
     const handleSubmitWrapper = useCallback(() => {
+        const draft = latestDraft.current;
         const isEmptyPost = isPostDraftEmpty(draft);
 
         if (isInEditMode && isEmptyPost) {
@@ -544,7 +543,7 @@ const AdvancedTextEditor = ({
         }
 
         handleSubmitWithErrorHandling();
-    }, [dispatch, draft, handleSubmitWithErrorHandling, isInEditMode, isRHS, isDraftSendable]);
+    }, [dispatch, latestDraft, handleSubmitWithErrorHandling, isInEditMode, isRHS, isDraftSendable]);
 
     const [handleKeyDown, postMsgKeyPress] = useKeyHandler(
         draft,
@@ -596,16 +595,19 @@ const AdvancedTextEditor = ({
         }
 
         handleDraftChange({
-            ...draft,
+            ...latestDraft.current,
             message,
         });
-    }, [draft, handleDraftChange, serverError]);
+    }, [latestDraft, handleDraftChange, serverError]);
 
     const handleWysiwygChange = useCallback((markdown: string) => {
         emitTypingEvent();
         if (!isErrorInvalidSlashCommand(serverError)) {
             setServerError(null);
         }
+
+        // This depends on the draft instead of reading the latest one because the rich text editor can report a
+        // change for the channel or thread that was just left, and that has to be added to the draft it belongs to
         handleDraftChange({
             ...draft,
             message: markdown,
@@ -650,14 +652,14 @@ const AdvancedTextEditor = ({
 
     const prefillMessage = useCallback((message: string) => {
         handleDraftChange({
-            ...draft,
+            ...latestDraft.current,
             message,
         });
 
         const inputBox = textboxRef.current?.getInputBox();
         inputBox?.click();
         focusTextbox(true);
-    }, [handleDraftChange, focusTextbox, draft, textboxRef]);
+    }, [handleDraftChange, focusTextbox, latestDraft, textboxRef]);
 
     // Handle width change when there is no message.
     useEffect(() => {
@@ -694,12 +696,12 @@ const AdvancedTextEditor = ({
 
     // Register listener to store the draft when the page unloads
     useEffect(() => {
-        const callback = () => handleDraftChange(draft, {instant: true, show: true});
+        const callback = () => handleDraftChange(latestDraft.current, {instant: true, show: true});
         window.addEventListener('beforeunload', callback);
         return () => {
             window.removeEventListener('beforeunload', callback);
         };
-    }, [handleDraftChange, draft]);
+    }, [handleDraftChange, latestDraft]);
 
     // Keep track of the draft as a ref so that we can save it when changing channels
     useEffect(() => {
@@ -774,7 +776,13 @@ const AdvancedTextEditor = ({
 
     const messageValue = isDisabled && !rewriteIsProcessing ? '' : draft.message_source || draft.message;
 
-    const wasNotifiedOfLogIn = LocalStorageStore.getWasNotifiedOfLogIn();
+    // Once this has been set it stays set while the user is logged in, so it doesn't need to be read from local
+    // storage again on every render
+    const wasNotifiedOfLogInRef = useRef(false);
+    if (!wasNotifiedOfLogInRef.current) {
+        wasNotifiedOfLogInRef.current = LocalStorageStore.getWasNotifiedOfLogIn();
+    }
+    const wasNotifiedOfLogIn = wasNotifiedOfLogInRef.current;
 
     let loginSuccessfulLabel;
     if (!wasNotifiedOfLogIn) {
@@ -823,20 +831,24 @@ const AdvancedTextEditor = ({
         );
     }, [draft, getSelectedText, updateText, channelId, location, rewriteMenuProps, aiRewriteEnabled, hasAIActionsMenu]);
 
+    // AutoHeightSwitcher copies its slot into state whenever it's given a new element, which is another render of
+    // the formatting bar, so only make a new element when something in it has changed
+    const formattingBarSlot = useMemo(() => (
+        <FormattingBar
+            ref={formattingBarRef}
+            applyFormatting={applyFormatting}
+            disableControls={showPreview}
+            additionalControls={additionalControls}
+            location={location}
+            aiActionsMenu={aiActionsMenu}
+            getEditor={wysiwygEnabled ? getWysiwygEditor : undefined}
+        />
+    ), [applyFormatting, showPreview, additionalControls, location, aiActionsMenu, wysiwygEnabled, getWysiwygEditor]);
+
     const formattingBar = (
         <AutoHeightSwitcher
             showSlot={showFormattingBar ? 1 : 2}
-            slot1={(
-                <FormattingBar
-                    ref={formattingBarRef}
-                    applyFormatting={applyFormatting}
-                    disableControls={showPreview}
-                    additionalControls={additionalControls}
-                    location={location}
-                    aiActionsMenu={aiActionsMenu}
-                    getEditor={wysiwygEnabled ? () => wysiwygRef.current?.getEditor() ?? null : undefined}
-                />
-            )}
+            slot1={formattingBarSlot}
             slot2={null}
             shouldScrollIntoView={keepEditorInFocus}
         />
@@ -865,7 +877,8 @@ const AdvancedTextEditor = ({
 
     const showFormattingSpacer = isMessageLong || showPreview || attachmentPreview || isRHS || isThreadView;
 
-    const containsAtMentionsInMessage = allAtMentions(draft?.message)?.length > 0;
+    // This is only shown when editing a post, so there's no need to look for mentions on every keystroke otherwise
+    const containsAtMentionsInMessage = isInEditMode && allAtMentions(draft?.message)?.length > 0;
 
     return (
         <form

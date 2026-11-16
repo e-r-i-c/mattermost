@@ -138,8 +138,11 @@ function upsertDraft(draft: PostDraft, userId: UserProfile['id'], rootId = '', c
 
 export function setGlobalDraft(key: string, value: PostDraft | null, isRemote: boolean): ActionFunc {
     return (dispatch) => {
-        dispatch(setGlobalItem(key, value));
-        dispatch(setGlobalDraftSource(key, isRemote));
+        // Batched so that saving a draft notifies the store's subscribers once instead of twice
+        dispatch(batchActions([
+            setGlobalItem(key, value),
+            setGlobalDraftSource(key, isRemote),
+        ]));
         return {data: true};
     };
 }

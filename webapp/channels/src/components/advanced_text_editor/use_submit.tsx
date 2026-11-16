@@ -32,6 +32,7 @@ import NotifyConfirmModal from 'components/notify_confirm_modal';
 import PostDeletedModal from 'components/post_deleted_modal';
 import ResetStatusModal from 'components/reset_status_modal';
 
+import {useLatest} from 'hooks/useLatest';
 import Constants, {ModalIdentifiers, UserStatuses} from 'utils/constants';
 import {isErrorInvalidSlashCommand, isServerError, specialMentionsInText} from 'utils/post_utils';
 
@@ -74,6 +75,10 @@ const useSubmit = (
     postId?: string,
 ) => {
     const getGroupMentions = useGroups(channelId, draft.message);
+
+    // The submit handlers read the draft from this ref so that they don't change on every keystroke, which would
+    // re-render everything in the editor that can submit
+    const latestDraft = useLatest(draft);
 
     const dispatch = useDispatch();
 
@@ -149,7 +154,7 @@ const useSubmit = (
         }
     }, [dispatch, postFileIds, postId]);
 
-    const doSubmit = useCallback(async (submittingDraft: PostDraft = draft, schedulingInfo?: SchedulingInfo, createPostOptions?: CreatePostOptions) => {
+    const doSubmit = useCallback(async (submittingDraft: PostDraft = latestDraft.current, schedulingInfo?: SchedulingInfo, createPostOptions?: CreatePostOptions) => {
         if (submittingDraft.uploadsInProgress.length > 0) {
             isDraftSubmitting.current = false;
             return;
@@ -164,7 +169,7 @@ const useSubmit = (
             return;
         }
 
-        if (isPostDraftEmpty(draft)) {
+        if (isPostDraftEmpty(latestDraft.current)) {
             isDraftSubmitting.current = false;
             return;
         }
@@ -252,7 +257,7 @@ const useSubmit = (
         isDraftSubmitting.current = false;
     }, [
         dispatch,
-        draft,
+        latestDraft,
         postError,
         isRootDeleted,
         serverError,
@@ -295,7 +300,7 @@ const useSubmit = (
         }));
     }, [dispatch]);
 
-    const handleSubmit = useCallback(async (submittingDraftParam = draft, schedulingInfo?: SchedulingInfo, options?: CreatePostOptions) => {
+    const handleSubmit = useCallback(async (submittingDraftParam = latestDraft.current, schedulingInfo?: SchedulingInfo, options?: CreatePostOptions) => {
         if (!channel) {
             return;
         }
@@ -402,7 +407,7 @@ const useSubmit = (
         await doSubmit(submittingDraft, schedulingInfo, options);
     }, [
         doSubmit,
-        draft,
+        latestDraft,
         isDirectOrGroup,
         isInEditMode,
         channel,

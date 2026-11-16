@@ -17,6 +17,7 @@ import {openModal} from 'actions/views/modals';
 import PersistNotificationConfirmModal from 'components/persist_notification_confirm_modal';
 import PostPriorityPicker from 'components/post_priority/post_priority_picker';
 
+import {useLatest} from 'hooks/useLatest';
 import Constants, {ModalIdentifiers} from 'utils/constants';
 import {hasRequestedPersistentNotifications, mentionsMinusSpecialMentionsInText, specialMentionsInText} from 'utils/post_utils';
 
@@ -24,6 +25,8 @@ import type {GlobalState} from 'types/store';
 import type {PostDraft} from 'types/store/draft';
 
 import PriorityLabels from './priority_labels';
+
+const NO_SPECIAL_MENTIONS: {[key: string]: boolean} = {all: false, channel: false, here: false};
 
 const usePriority = (
     draft: PostDraft,
@@ -35,6 +38,10 @@ const usePriority = (
     const dispatch = useDispatch();
     const rootId = draft.rootId;
     const channelId = draft.channelId;
+
+    // The handlers read the draft from this ref so that they, and the controls that are given them, don't change
+    // on every keystroke
+    const latestDraft = useLatest(draft);
 
     const isPostPriorityEnabled = useSelector(isPostPriorityEnabledSelector);
     const channelType = useSelector((state: GlobalState) => getChannel(state, channelId)?.type || 'O');
@@ -50,9 +57,11 @@ const usePriority = (
         draft.metadata.priority.requested_ack
     );
 
+    // Finding these means parsing the message as markdown, and they only matter for a post with a priority, so
+    // skip that while typing an ordinary message
     const specialMentions = useMemo(() => {
-        return specialMentionsInText(draft.message);
-    }, [draft.message]);
+        return hasPrioritySet ? specialMentionsInText(draft.message) : NO_SPECIAL_MENTIONS;
+    }, [hasPrioritySet, draft.message]);
 
     const hasSpecialMentions = useMemo(() => {
         return Object.values(specialMentions).includes(true);
@@ -83,7 +92,7 @@ const usePriority = (
 
     const handlePostPriorityApply = useCallback((settings?: PostPriorityMetadata) => {
         const updatedDraft = {
-            ...draft,
+            ...latestDraft.current,
         };
 
         if (settings?.priority || settings?.requested_ack) {
@@ -104,7 +113,7 @@ const usePriority = (
 
         handleDraftChange(updatedDraft, {instant: true});
         focusTextbox();
-    }, [focusTextbox, draft, handleDraftChange]);
+    }, [focusTextbox, latestDraft, handleDraftChange]);
 
     const handlePostPriorityHide = useCallback(() => {
         focusTextbox(true);
@@ -129,16 +138,19 @@ const usePriority = (
     }, [channelTeammateUsername, dispatch]);
 
     const onSubmitCheck = useCallback((onConfirm: () => void) => {
+        const draft = latestDraft.current;
+
         if (
             isPostPriorityEnabled &&
             hasRequestedPersistentNotifications(draft?.metadata?.priority)
         ) {
-            showPersistNotificationModal(draft.message, specialMentions, channelType, onConfirm);
+            showPersistNotificationModal(draft.message, specialMentionsInText(draft.message), channelType, onConfirm);
             return true;
         }
         return false;
-    }, [isPostPriorityEnabled, showPersistNotificationModal, draft, channelType, specialMentions]);
+    }, [isPostPriorityEnabled, showPersistNotificationModal, latestDraft, channelType]);
 
+    const priority = draft.metadata?.priority;
     const labels = useMemo(() => (
         (hasPrioritySet && !rootId) ? (
             <PriorityLabels
@@ -146,12 +158,12 @@ const usePriority = (
                 hasError={!isValidPersistentNotifications}
                 specialMentions={specialMentions}
                 onRemove={handleRemovePriority}
-                persistentNotifications={draft!.metadata!.priority?.persistent_notifications}
-                priority={draft!.metadata!.priority?.priority}
-                requestedAck={draft!.metadata!.priority?.requested_ack}
+                persistentNotifications={priority?.persistent_notifications}
+                priority={priority?.priority}
+                requestedAck={priority?.requested_ack}
             />
         ) : undefined
-    ), [hasPrioritySet, rootId, showIndividualCloseButton, shouldShowPreview, isValidPersistentNotifications, specialMentions, handleRemovePriority, draft]);
+    ), [hasPrioritySet, rootId, showIndividualCloseButton, shouldShowPreview, isValidPersistentNotifications, specialMentions, handleRemovePriority, priority]);
 
     const additionalControl = useMemo(() =>
         !rootId && isPostPriorityEnabled && (

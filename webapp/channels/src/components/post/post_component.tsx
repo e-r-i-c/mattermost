@@ -271,12 +271,18 @@ function PostComponent(props: Props) {
     }, [hover]);
 
     useEffect(() => {
+        // The handler only acts on a highlighted post that hasn't received focus yet, so every other
+        // mounted post skips listening to each key released anywhere in the app.
+        if (!shouldHighlight || hasReceivedA11yFocus) {
+            return undefined;
+        }
+
         document.addEventListener('keyup', handleA11yKeyboardFocus);
 
         return () => {
             document.removeEventListener('keyup', handleA11yKeyboardFocus);
         };
-    }, [handleA11yKeyboardFocus]);
+    }, [handleA11yKeyboardFocus, shouldHighlight, hasReceivedA11yFocus]);
 
     const hasSameRoot = (props: Props) => {
         if (props.isFirstReply) {

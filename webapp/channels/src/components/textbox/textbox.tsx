@@ -78,6 +78,7 @@ export type Props = {
 
 const VISIBLE = {visibility: 'visible'} as const;
 const HIDDEN = {visibility: 'hidden'} as const;
+const PREVIEW_IMAGE_PROPS = {hideUtilities: true};
 
 export default class Textbox extends React.PureComponent<Props> {
     private readonly suggestionProviders: Provider[];
@@ -307,11 +308,14 @@ export default class Textbox extends React.PureComponent<Props> {
                     onKeyDown={this.handleKeyDown}
                     onBlur={this.handleBlur}
                 >
-                    <PostMarkdown
-                        message={this.props.value}
-                        channelId={this.props.channelId}
-                        imageProps={{hideUtilities: true}}
-                    />
+                    {/* The preview is hidden while editing, so don't format the message on every keystroke */}
+                    {this.props.preview && (
+                        <PostMarkdown
+                            message={this.props.value}
+                            channelId={this.props.channelId}
+                            imageProps={PREVIEW_IMAGE_PROPS}
+                        />
+                    )}
                 </div>
                 <SuggestionBox
                     ref={this.message}

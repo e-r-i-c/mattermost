@@ -2,7 +2,7 @@
 // See LICENSE.txt for license information.
 
 import {flip, offset, shift} from '@floating-ui/react';
-import React, {useCallback, useState} from 'react';
+import React, {memo, useCallback, useState} from 'react';
 import {useIntl} from 'react-intl';
 import {useSelector} from 'react-redux';
 
@@ -24,14 +24,92 @@ import {horizontallyWithin} from 'utils/floating';
 
 import type {GlobalState} from 'types/store';
 
+type EditorEmojiPickerButtonProps = {
+    textboxId: string;
+    disabled: boolean;
+    showEmojiPicker: boolean;
+    setShowEmojiPicker: (showEmojiPicker: boolean) => void;
+    enableGifPicker: boolean;
+    onToggle: (e?: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
+    onEmojiClick: (emoji: Emoji) => void;
+    onGifClick: (gif: string) => void;
+};
+
+// This is a memoized component instead of part of the hook below so that the button, its tooltip and the positioning
+// of the picker aren't rendered again every time the editor is, which is on every keystroke.
+const EditorEmojiPickerButton = memo(({
+    textboxId,
+    disabled,
+    showEmojiPicker,
+    setShowEmojiPicker,
+    enableGifPicker,
+    onToggle,
+    onEmojiClick,
+    onGifClick,
+}: EditorEmojiPickerButtonProps) => {
+    const intl = useIntl();
+
+    const {
+        emojiPicker,
+        getReferenceProps,
+        setReference,
+    } = useEmojiPicker({
+        showEmojiPicker,
+        setShowEmojiPicker,
+
+        enableGifPicker,
+        onGifClick,
+        onEmojiClick,
+
+        overrideMiddleware: [
+            offset(useEmojiPickerOffset),
+            shift(),
+            horizontallyWithin({
+                boundary: document.getElementById(textboxId),
+            }),
+            flip({
+                fallbackAxisSideDirection: 'end',
+            }),
+        ],
+    });
+
+    return (
+        <>
+            <WithTooltip
+                title={
+                    <KeyboardShortcutSequence
+                        shortcut={KEYBOARD_SHORTCUTS.msgShowEmojiPicker}
+                        hoistDescription={true}
+                        isInsideTooltip={true}
+                    />
+                }
+            >
+                <IconButton
+                    id='emojiPickerButton'
+                    ref={setReference}
+                    size='small'
+                    icon={
+                        <Icon glyph={<EmoticonHappyOutlineIcon color='currentColor'/>}/>
+                    }
+                    onClick={onToggle}
+                    aria-label={intl.formatMessage({id: 'emoji_picker.emojiPicker.button.ariaLabel', defaultMessage: 'select an emoji'})}
+                    disabled={disabled}
+                    toggled={showEmojiPicker}
+                    {...getReferenceProps()}
+                />
+            </WithTooltip>
+            {emojiPicker}
+        </>
+    );
+});
+EditorEmojiPickerButton.displayName = 'EditorEmojiPickerButton';
+
 const useEditorEmojiPicker = (
     textboxId: string,
     isDisabled: boolean,
     shouldShowPreview: boolean,
     insertWysiwygText?: (text: string) => void,
 ) => {
-    const intl = useIntl();
-
     const enableEmojiPicker = useSelector((state: GlobalState) => getConfig(state).EnableEmojiPicker === 'true');
     const enableGifPicker = useSelector((state: GlobalState) => getConfig(state).EnableGifPicker === 'true');
 
@@ -79,59 +157,19 @@ const useEditorEmojiPicker = (
         setShowEmojiPicker(false);
     }, [insertTextAtCaret]);
 
-    const {
-        emojiPicker,
-        getReferenceProps,
-        setReference,
-    } = useEmojiPicker({
-        showEmojiPicker,
-        setShowEmojiPicker,
-
-        enableGifPicker,
-        onGifClick: handleGifClick,
-        onEmojiClick: handleEmojiClick,
-
-        overrideMiddleware: [
-            offset(useEmojiPickerOffset),
-            shift(),
-            horizontallyWithin({
-                boundary: document.getElementById(textboxId),
-            }),
-            flip({
-                fallbackAxisSideDirection: 'end',
-            }),
-        ],
-    });
-
     let emojiPickerControls = null;
     if (enableEmojiPicker && !isDisabled) {
         emojiPickerControls = (
-            <>
-                <WithTooltip
-                    title={
-                        <KeyboardShortcutSequence
-                            shortcut={KEYBOARD_SHORTCUTS.msgShowEmojiPicker}
-                            hoistDescription={true}
-                            isInsideTooltip={true}
-                        />
-                    }
-                >
-                    <IconButton
-                        id='emojiPickerButton'
-                        ref={setReference}
-                        size='small'
-                        icon={
-                            <Icon glyph={<EmoticonHappyOutlineIcon color='currentColor'/>}/>
-                        }
-                        onClick={toggleEmojiPicker}
-                        aria-label={intl.formatMessage({id: 'emoji_picker.emojiPicker.button.ariaLabel', defaultMessage: 'select an emoji'})}
-                        disabled={shouldShowPreview}
-                        toggled={showEmojiPicker}
-                        {...getReferenceProps()}
-                    />
-                </WithTooltip>
-                {emojiPicker}
-            </>
+            <EditorEmojiPickerButton
+                textboxId={textboxId}
+                disabled={shouldShowPreview}
+                showEmojiPicker={showEmojiPicker}
+                setShowEmojiPicker={setShowEmojiPicker}
+                enableGifPicker={enableGifPicker}
+                onToggle={toggleEmojiPicker}
+                onEmojiClick={handleEmojiClick}
+                onGifClick={handleGifClick}
+            />
         );
     }
 

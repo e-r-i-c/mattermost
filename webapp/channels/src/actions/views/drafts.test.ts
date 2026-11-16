@@ -1,6 +1,8 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
+import {batchActions} from 'redux-batched-actions';
+
 import {Client4} from 'mattermost-redux/client';
 import {Posts, Preferences} from 'mattermost-redux/constants';
 import {getPreferenceKey} from 'mattermost-redux/utils/preference_utils';
@@ -148,12 +150,14 @@ describe('draft actions', () => {
             const testStore = mockStore(initialState);
 
             const expectedKey = StoragePrefixes.DRAFT + channelId;
-            testStore.dispatch(setGlobalItem(expectedKey, {
-                ...draft,
-                createAt: 42,
-                updateAt: 42,
-            }));
-            testStore.dispatch(setGlobalDraftSource(expectedKey, false));
+            testStore.dispatch(batchActions([
+                setGlobalItem(expectedKey, {
+                    ...draft,
+                    createAt: 42,
+                    updateAt: 42,
+                }),
+                setGlobalDraftSource(expectedKey, false),
+            ]));
 
             expect(store.getActions()).toEqual(testStore.getActions());
             jest.useRealTimers();

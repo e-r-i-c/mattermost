@@ -3,7 +3,7 @@
 
 import classNames from 'classnames';
 import type {ReactNode} from 'react';
-import React from 'react';
+import React, {memo} from 'react';
 
 import type {Channel} from '@mattermost/types/channels';
 import type {ServerError} from '@mattermost/types/errors';
@@ -24,7 +24,7 @@ interface Props {
     isInEditMode: boolean;
 }
 
-export default function Footer({
+function Footer({
     postError,
     errorClass,
     serverError,
@@ -61,3 +61,5 @@ export default function Footer({
         </div>
     );
 }
+
+export default memo(Footer);

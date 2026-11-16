@@ -19,6 +19,8 @@ import BurnOnReadLabel from 'components/burn_on_read/burn_on_read_label';
 import BurnOnReadTourTip from 'components/burn_on_read/burn_on_read_tour_tip';
 import {useCreateBurnOnReadAccess} from 'components/common/hooks/useCreateBurnOnReadAccess';
 
+import {useLatest} from 'hooks/useLatest';
+
 import 'components/burn_on_read/burn_on_read_control.scss';
 
 import type {GlobalState} from 'types/store';
@@ -88,18 +90,25 @@ const useBurnOnRead = (
 
     const hasBurnOnReadSet = isEnabled && draft.type === PostTypes.BURN_ON_READ;
 
+    // Read from a ref so that the handler, and the button that's given it, don't change on every keystroke
+    const latestDraft = useLatest(draft);
+
     const handleBurnOnReadApply = useCallback((enabled: boolean) => {
         const updatedDraft = {
-            ...draft,
+            ...latestDraft.current,
             type: enabled ? PostTypes.BURN_ON_READ : undefined,
         };
 
         handleDraftChange(updatedDraft, {instant: true});
         focusTextbox();
-    }, [draft, handleDraftChange, focusTextbox]);
+    }, [latestDraft, handleDraftChange, focusTextbox]);
 
     const handleRemoveBurnOnRead = useCallback(() => {
         handleBurnOnReadApply(false);
+    }, [handleBurnOnReadApply]);
+
+    const handleTryBurnOnRead = useCallback(() => {
+        handleBurnOnReadApply(true);
     }, [handleBurnOnReadApply]);
 
     // For the edge case where a draft was in Burn-on-Read and the policy was revoked, do not allow sending.
@@ -134,10 +143,10 @@ const useBurnOnRead = (
                 />
                 <BurnOnReadTourTip
                     key='burn-on-read-tour-tip-key'
-                    onTryItOut={() => handleBurnOnReadApply(true)}
+                    onTryItOut={handleTryBurnOnRead}
                 />
             </div>
-        ) : undefined), [rootId, isEnabled, allowedByPolicy, isAllowedInChannel, hasBurnOnReadSet, handleBurnOnReadApply, shouldShowPreview, durationMinutes]);
+        ) : undefined), [rootId, isEnabled, allowedByPolicy, isAllowedInChannel, hasBurnOnReadSet, handleBurnOnReadApply, handleTryBurnOnRead, shouldShowPreview, durationMinutes]);
 
     return {
         labels,

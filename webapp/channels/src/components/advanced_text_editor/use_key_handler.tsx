@@ -18,6 +18,7 @@ import {getIsRhsExpanded} from 'selectors/rhs';
 import type {TextboxElement} from 'components/textbox';
 import type TextboxClass from 'components/textbox/textbox';
 
+import {useLatest} from 'hooks/useLatest';
 import Constants, {A11yClassNames, Locations, Preferences} from 'utils/constants';
 import * as Keyboard from 'utils/keyboard';
 import type {MarkdownMode} from 'utils/markdown/apply_markdown';
@@ -322,16 +323,17 @@ const useKeyHandler = (
     ]);
 
     // Register paste events
+    const latestMessage = useLatest(draft.message);
     useEffect(() => {
         function onPaste(event: ClipboardEvent) {
-            pasteHandler(event, location, draft.message, isNonFormattedPaste.current, isInEditMode);
+            pasteHandler(event, location, latestMessage.current, isNonFormattedPaste.current, isInEditMode);
         }
 
         document.addEventListener('paste', onPaste);
         return () => {
             document.removeEventListener('paste', onPaste);
         };
-    }, [location, draft.message, isInEditMode]);
+    }, [location, latestMessage, isInEditMode]);
 
     const reactToLastMessage = useCallback((e: KeyboardEvent) => {
         e.preventDefault();

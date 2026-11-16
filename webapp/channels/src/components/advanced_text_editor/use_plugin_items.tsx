@@ -6,6 +6,7 @@ import {useSelector} from 'react-redux';
 
 import type TextboxClass from 'components/textbox/textbox';
 
+import {useLatest} from 'hooks/useLatest';
 import PluggableErrorBoundary from 'plugins/pluggable/error_boundary';
 
 import type {GlobalState} from 'types/store';
@@ -27,17 +28,24 @@ const usePluginItems = (
         };
     }, [textboxRef]);
 
+    const latestDraft = useLatest(draft);
+
     const updateText = useCallback((message: string) => {
         handleDraftChange({
-            ...draft,
+            ...latestDraft.current,
             message,
         });
 
         // Missing setting the state eventually?
-    }, [handleDraftChange, draft]);
+    }, [handleDraftChange, latestDraft]);
 
     const items = useMemo(() => {
-        return postEditorActions?.map((item) => {
+        if (!postEditorActions?.length) {
+            // Without any plugin items, return the same value on every keystroke instead of a new empty array
+            return undefined;
+        }
+
+        return postEditorActions.map((item) => {
             if (!item.component) {
                 return null;
             }

@@ -702,6 +702,54 @@ describe('PostList', () => {
             expect(ref.current!.initRangeToRender).toEqual([0, 50]);
         });
 
+        test('should only start with enough posts to fill the screen when opening at the latest post', () => {
+            const postListIds = [];
+            for (let i = 0; i < 110; i++) {
+                postListIds.push(`post${i}`);
+            }
+
+            const ref = React.createRef<PostList>();
+            renderWithContext(
+                <PostList
+                    ref={ref}
+                    {...baseProps}
+                    postListIds={postListIds}
+                />,
+            );
+            expect(ref.current!.initRangeFillCount).toEqual(15);
+        });
+
+        test('should render the whole range at once when opening at a permalink or at new messages', () => {
+            const postListIds = [];
+            for (let i = 0; i < 120; i++) {
+                postListIds.push(`post${i}`);
+            }
+
+            const permalinkRef = React.createRef<PostList>();
+            renderWithContext(
+                <PostList
+                    ref={permalinkRef}
+                    {...baseProps}
+                    postListIds={postListIds}
+                    focusedPostId='post40'
+                />,
+            );
+            expect(permalinkRef.current!.initRangeFillCount).toBeUndefined();
+
+            const newMessagesPostListIds = [...postListIds];
+            newMessagesPostListIds[65] = PostListRowListIds.START_OF_NEW_MESSAGES + 1551711601000;
+
+            const newMessagesRef = React.createRef<PostList>();
+            renderWithContext(
+                <PostList
+                    ref={newMessagesRef}
+                    {...baseProps}
+                    postListIds={newMessagesPostListIds}
+                />,
+            );
+            expect(newMessagesRef.current!.initRangeFillCount).toBeUndefined();
+        });
+
         test('should return range if new messages are present', () => {
             const postListIds = [];
             for (let i = 0; i < 120; i++) {
