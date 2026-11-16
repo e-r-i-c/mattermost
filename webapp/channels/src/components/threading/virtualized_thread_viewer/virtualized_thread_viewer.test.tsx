@@ -16,6 +16,7 @@ import {TestHelper} from 'utils/test_helper';
 import VirtualizedThreadViewer from './virtualized_thread_viewer';
 
 const mockScrollToItem = jest.fn();
+const mockListRendered = jest.fn();
 
 jest.mock('components/dynamic_virtualized_list', () => {
     const ReactMock = require('react');
@@ -24,6 +25,7 @@ jest.mock('components/dynamic_virtualized_list', () => {
             ReactMock.useImperativeHandle(ref, () => ({
                 scrollToItem: mockScrollToItem,
             }));
+            mockListRendered(props);
             return <div data-testid='virtualized-list'/>;
         }),
     };
@@ -96,6 +98,29 @@ describe('components/threading/VirtualizedThreadViewer', () => {
 
     beforeEach(() => {
         mockScrollToItem.mockClear();
+        mockListRendered.mockClear();
+    });
+
+    test('should only render enough replies to fill the screen at first when opening at the latest reply', () => {
+        renderWithContext(
+            <VirtualizedThreadViewer {...baseProps}/>,
+            baseState,
+        );
+
+        expect(mockListRendered).toHaveBeenCalledWith(expect.objectContaining({initRangeFillCount: 15}));
+    });
+
+    test('should render the whole initial range at once when opening at a highlighted reply', () => {
+        renderWithContext(
+            <VirtualizedThreadViewer
+                {...baseProps}
+                replyListIds={['create-comment', 'reply2', 'reply1', baseProps.selected.id]}
+                highlightedPostId='reply1'
+            />,
+            baseState,
+        );
+
+        expect(mockListRendered).toHaveBeenCalledWith(expect.objectContaining({initRangeFillCount: undefined}));
     });
 
     test('should scroll to the bottom when the current user makes a new post in the thread', () => {

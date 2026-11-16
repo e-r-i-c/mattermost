@@ -6,9 +6,20 @@
 import memoizeOne from 'memoize-one';
 import {createElement, PureComponent, type JSX} from 'react';
 
+import {runWhenIdle} from 'utils/run_when_idle';
+
 import ListItem from './list_item';
 
 const atBottomMargin = 10;
+
+// With initRangeFillCount, items are rendered until they're this many times as tall as the list, so that there's
+// a little to scroll into before the rest of the initial range is rendered.
+const INIT_RANGE_FILL_HEIGHT_FACTOR = 1.2;
+
+// How many more items of the initial range are rendered at a time with initRangeFillCount, while filling the visible
+// area and then once the browser is idle
+const INIT_RANGE_FILL_BATCH_SIZE = 5;
+const INIT_RANGE_IDLE_BATCH_SIZE = 10;
 
 export type InitialScrollIndex = {
     index: number;
@@ -56,6 +67,14 @@ export interface DynamicVirtualizedListProps {
     id?: string;
     className?: string;
     correctScrollToBottom?: boolean;
+
+    /**
+     * When set, the list doesn't render all of initRangeToRender before it's shown. It starts with this many items
+     * from the start of that range, adds more until they cover the visible area, and leaves the rest of the range
+     * to be rendered in small batches once the browser is idle. This is only meant for lists that are initially
+     * scrolled to their first item.
+     */
+    initRangeFillCount?: number;
     innerListStyle?: React.CSSProperties;
     loaderId?: string;
 }
@@ -99,6 +118,12 @@ export class DynamicVirtualizedList extends PureComponent<DynamicVirtualizedList
     private _keepScrollToBottom = false;
     private _mountingCorrections = 0;
     private _correctedInstances = 0;
+
+    // The last index of initRangeToRender that's rendered so far when initRangeFillCount is set
+    private _initRangeStopIndex: number | null = null;
+    private _cancelIdleRender: (() => void) | null = null;
+    private _lastIdleRenderStopIndex = -1;
+    private _isIdleRenderPending = false;
 
     static defaultProps = {
         itemData: undefined,
@@ -295,6 +320,8 @@ export class DynamicVirtualizedList extends PureComponent<DynamicVirtualizedList
         if (this._scrollByCorrection) {
             window.cancelAnimationFrame(this._scrollByCorrection);
         }
+
+        this._cancelIdleRender?.();
     }
 
     _callOnItemsRendered = memoizeOne((overscanStartIndex, overscanStopIndex, visibleStartIndex, visibleStopIndex) =>
@@ -356,7 +383,11 @@ export class DynamicVirtualizedList extends PureComponent<DynamicVirtualizedList
                         // of mattermost/dynamic-virtualized-list
                     ).size;
 
-                    if (!sizeOfNextElement && this.state.scrolledToInitIndex) {
+                    // While the rest of the initial range is waiting to be rendered, only the user scrolling
+                    // towards it brings it forward, not the list positioning itself
+                    const waitForIdleRender = this._isIdleRenderPending && scrollUpdateWasRequested;
+
+                    if (!sizeOfNextElement && this.state.scrolledToInitIndex && !waitForIdleRender) {
                         this.setState((prevState) => {
                             if (
                                 prevState.localOlderPostsToRender[0] !==
@@ -394,11 +425,18 @@ export class DynamicVirtualizedList extends PureComponent<DynamicVirtualizedList
             !this.state.scrolledToInitIndex &&
             Object.keys(this._listMetaData.itemOffsetMap).length
         ) {
+            if (this._growInitRangeToFill()) {
+                // More items are needed to cover the visible area, so wait for them before scrolling
+                return;
+            }
+
             const {index, position, offset} = this.props.initScrollToIndex();
             this.scrollToItem(index, position, offset);
             this.setState({
                 scrolledToInitIndex: true,
             });
+
+            this._renderRestOfInitRangeWhenIdle();
 
             if (index === 0) {
                 this._keepScrollToBottom = true;
@@ -406,6 +444,104 @@ export class DynamicVirtualizedList extends PureComponent<DynamicVirtualizedList
                 this._keepScrollPosition = true;
             }
         }
+    };
+
+    _getInitRangeToRender() {
+        const {initRangeToRender, initRangeFillCount} = this.props;
+
+        if (!initRangeFillCount) {
+            return initRangeToRender;
+        }
+
+        const [startIndex, stopIndex] = initRangeToRender;
+
+        if (this._initRangeStopIndex === null) {
+            this._initRangeStopIndex = Math.min(stopIndex, startIndex + (initRangeFillCount - 1));
+        }
+
+        return [startIndex, this._initRangeStopIndex];
+    }
+
+    _getInitRangeTargetStopIndex() {
+        return Math.min(this.props.initRangeToRender[1], this.props.itemData.length - 1);
+    }
+
+    /**
+     * Renders more of initRangeToRender when the items rendered so far don't cover the visible area with some room
+     * to scroll. Returns true if more items are going to be rendered.
+     */
+    _growInitRangeToFill() {
+        if (!this.props.initRangeFillCount || this._initRangeStopIndex === null) {
+            return false;
+        }
+
+        if (this._initRangeStopIndex >= this._getInitRangeTargetStopIndex()) {
+            return false;
+        }
+
+        if (this._listMetaData.totalMeasuredSize >= this.props.height * INIT_RANGE_FILL_HEIGHT_FACTOR) {
+            return false;
+        }
+
+        this._initRangeStopIndex = Math.min(
+            this._getInitRangeTargetStopIndex(),
+            this._initRangeStopIndex + INIT_RANGE_FILL_BATCH_SIZE,
+        );
+        this.forceUpdate();
+
+        return true;
+    }
+
+    /**
+     * Renders the part of initRangeToRender that was left out to show the list sooner, a batch at a time so that
+     * it doesn't hold up anything the user does in the meantime.
+     */
+    _renderRestOfInitRangeWhenIdle = () => {
+        if (!this.props.initRangeFillCount) {
+            return;
+        }
+
+        this._isIdleRenderPending = true;
+        this._cancelIdleRender?.();
+
+        let cancelled = false;
+        this._cancelIdleRender = () => {
+            cancelled = true;
+        };
+
+        // The browser can be idle before it has presented what was just rendered, so wait for a frame first.
+        // Otherwise, the rest would be rendered before the user sees anything, which is what this avoids.
+        window.requestAnimationFrame(() => runWhenIdle(() => {
+            if (cancelled) {
+                return;
+            }
+            this._cancelIdleRender = null;
+
+            const [, stopIndex] = this._getRangeToRender();
+            const targetStopIndex = this._getInitRangeTargetStopIndex();
+
+            if (stopIndex >= targetStopIndex) {
+                this._isIdleRenderPending = false;
+                this.forceUpdate();
+                return;
+            }
+
+            if (stopIndex <= this._lastIdleRenderStopIndex) {
+                // The last batch couldn't be measured, so move past it instead of rendering it over and over
+                this._initRangeStopIndex = Math.min(targetStopIndex, stopIndex + INIT_RANGE_IDLE_BATCH_SIZE);
+            } else {
+                this._initRangeStopIndex = stopIndex;
+            }
+            this._lastIdleRenderStopIndex = stopIndex;
+
+            // Rendering these as older posts keeps the scroll position where it is while they're added above it
+            this.setState({
+                localOlderPostsToRender: [
+                    this._initRangeStopIndex + 1,
+                    Math.min(targetStopIndex, this._initRangeStopIndex + INIT_RANGE_IDLE_BATCH_SIZE),
+                ],
+            }, this._renderRestOfInitRangeWhenIdle);
+        }));
     };
 
     // This method is called when data changes
@@ -504,7 +640,18 @@ export class DynamicVirtualizedList extends PureComponent<DynamicVirtualizedList
             !this.state.scrolledToInitIndex &&
             this.props.initRangeToRender.length
         ) {
-            return this.props.initRangeToRender;
+            return this._getInitRangeToRender();
+        }
+
+        if (this._isIdleRenderPending && this._initRangeStopIndex !== null) {
+            // Don't go past what's been rendered of the initial range so far, other than to items that have been
+            // rendered since. Without this, an item that's always rendered, like the loader at the end of the
+            // list, would bring every item before it along.
+            let cappedValue = Math.min(maxValue, this._initRangeStopIndex);
+            while (cappedValue < maxValue && getItemSize(this.props, cappedValue + 1, this._listMetaData)) {
+                cappedValue++;
+            }
+            maxValue = cappedValue;
         }
 
         return [minValue, maxValue, startIndex, stopIndex];

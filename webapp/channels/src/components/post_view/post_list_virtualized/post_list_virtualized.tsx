@@ -36,6 +36,10 @@ const MAXIMUM_POSTS_FOR_SLICING = {
     permalink: 100,
 };
 
+// When the channel opens at its latest post, only this many posts are rendered before it's shown, plus however
+// many more it takes to fill the screen. The rest of the initial range follows once the browser is idle.
+const INITIAL_POSTS_TO_FILL = 15;
+
 const postListStyle = {
     padding: '14px 0px 7px',
 };
@@ -148,6 +152,7 @@ export default class PostList extends React.PureComponent<Props, State> {
     postListRef: React.RefObject<HTMLDivElement | null>;
     scrollStopAction: DelayedAction | null = null;
     initRangeToRender: number[];
+    initRangeFillCount?: number;
     showSearchHintThreshold: number;
     mounted: boolean;
     newMessageLineIndex: number;
@@ -197,6 +202,13 @@ export default class PostList extends React.PureComponent<Props, State> {
             Math.max(postIndex - 30, 0),
             Math.max(postIndex + 30, Math.min((props.postListIds || []).length - 1, maxPostsForSlicing)),
         ];
+
+        // A channel that opens at a permalink or at the new messages line needs posts on both sides of that
+        // position before it can be scrolled to, so only start small when opening at the latest post
+        if (!props.focusedPostId && postIndex <= 0) {
+            this.initRangeFillCount = INITIAL_POSTS_TO_FILL;
+        }
+
         this.showSearchHintThreshold = this.getShowSearchHintThreshold();
     }
 
@@ -713,6 +725,7 @@ export default class PostList extends React.PureComponent<Props, State> {
                                             style={virtListStyles}
                                             innerListStyle={postListStyle}
                                             initRangeToRender={this.initRangeToRender}
+                                            initRangeFillCount={this.initRangeFillCount}
                                             loaderId={PostListRowListIds.OLDER_MESSAGES_LOADER}
                                             correctScrollToBottom={this.props.atLatestPost}
                                             onItemsRendered={this.onItemsRendered}

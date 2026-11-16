@@ -94,6 +94,10 @@ const SCROLL_OFFSET_BUFFER = 5;
 const OVERSCAN_COUNT_FORWARD = 80;
 const OVERSCAN_COUNT_BACKWARD = 80;
 
+// When the thread opens at its latest reply, only this many replies are rendered before it's shown, plus however
+// many more it takes to fill the screen. The rest of the initial range follows once the browser is idle.
+const INITIAL_REPLIES_TO_FILL = 15;
+
 class ThreadViewerVirtualized extends PureComponent<Props, State> {
     private mounted = false;
     private scrollStopAction: DelayedAction;
@@ -101,6 +105,7 @@ class ThreadViewerVirtualized extends PureComponent<Props, State> {
     listRef: RefObject<DynamicVirtualizedList | null>;
     innerRef: RefObject<HTMLDivElement | null>;
     initRangeToRender: number[];
+    initRangeFillCount?: number;
 
     constructor(props: Props) {
         super(props);
@@ -111,6 +116,12 @@ class ThreadViewerVirtualized extends PureComponent<Props, State> {
             Math.max(postIndex - 30, 0),
             Math.max(postIndex + 30, Math.min(props.replyListIds.length - 1, 50)),
         ];
+
+        // A thread that opens at a highlighted reply or at the new messages line needs replies on both sides of
+        // that position before it can be scrolled to, so only start small when opening at the latest reply
+        if (postIndex <= 0) {
+            this.initRangeFillCount = INITIAL_REPLIES_TO_FILL;
+        }
 
         this.listRef = React.createRef();
         this.innerRef = React.createRef();
@@ -442,6 +453,7 @@ class ThreadViewerVirtualized extends PureComponent<Props, State> {
                                     canLoadMorePosts={this.canLoadMorePosts}
                                     height={height}
                                     initRangeToRender={this.initRangeToRender}
+                                    initRangeFillCount={this.initRangeFillCount}
                                     initScrollToIndex={this.initScrollToIndex}
                                     innerListStyle={this.getInnerStyles()}
                                     innerRef={this.innerRef}
