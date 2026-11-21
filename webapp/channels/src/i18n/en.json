@@ -24371,9 +24371,9 @@
     "defaultMessage": "Mail Icon",
     "description": "Accessibility title for an envelope/mail icon."
   },
-  "generic_icons.mattermost": {
-    "defaultMessage": "Mattermost Logo",
-    "description": "Accessibility title for the Mattermost logo; Mattermost is the product name."
+  "generic_icons.brisk": {
+    "defaultMessage": "Brisk Logo",
+    "description": "Accessibility title for the Brisk logo; Brisk is the product name."
   },
   "generic_icons.member": {
     "defaultMessage": "Member Icon",

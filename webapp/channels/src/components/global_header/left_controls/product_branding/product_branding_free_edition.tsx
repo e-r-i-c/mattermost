@@ -24,7 +24,7 @@ const ProductBrandingFreeEdition = (): JSX.Element => {
         <span className='globalHeader-leftControls-productBranding-freeEdition'>
             <MattermostLogo
                 className='globalHeader-leftControls-productBranding-freeEdition-logo'
-                width={116}
+                width={62}
                 height={20}
             />
             <span className='globalHeader-leftControls-productBranding-freeEdition-badge'>
