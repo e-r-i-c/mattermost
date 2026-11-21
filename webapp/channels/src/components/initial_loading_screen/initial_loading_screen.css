@@ -67,7 +67,7 @@ body {
 
 .LoadingAnimation {
     --fade-duration: 150ms;
-    --colour: #1E325C;
+    --colour: #16a34a;
     --animation-initial-delay: 50ms;
     --animation-start-duration: 400ms;
     --animation-end-duration: 500ms;
@@ -86,7 +86,7 @@ body {
 /* Apply dark mode based on OS preference automatically */
 @media (prefers-color-scheme: dark) {
     .LoadingAnimation {
-        --colour: white;
+        --colour: #4ade80;
     }
 }
 
